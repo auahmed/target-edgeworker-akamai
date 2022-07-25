@@ -1,7 +1,8 @@
 import { httpRequest } from "http-request";
 import { logger } from "log";
 
-const HOSTNAME = "https://abt-edge.nike.com";
+const HOSTNAME = "";
+const CLIENT = "";
 
 async function deliveryApiCall(
   sessionId,
@@ -9,7 +10,7 @@ async function deliveryApiCall(
   mboxesToDecide
 ) {
   try {
-    const url = `${HOSTNAME}/rest/v1/delivery?client=nike&sessionId=${sessionId}`;
+    const url = `${HOSTNAME}/rest/v1/delivery?client=${CLIENT}&sessionId=${sessionId}`;
 
     const mboxes = [];
     let i;
