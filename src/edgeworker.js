@@ -24,12 +24,14 @@ async function getDecisionsForRequest(
   tntId,
   mboxesToDecide
 ) {
-  const targetResponse = deliveryApiCall(
+  const targetResponse = await deliveryApiCall(
     sessionId,
     tntId,
     mboxesToDecide
   );
-  logger.log("targetResponse", JSON.stringify(targetResponse));
+  // Save sessionId and tntId returned from target
+  request.setVariable(sessionIdVariable, sessionId);
+  request.setVariable(tntIdVariable, targetResponse.id.tntId);
   // TODO: Create into an array of objects with featureKey, variationKey and experimentKey
   return [[], []];
 }
@@ -124,8 +126,6 @@ async function getRequestTargetDecisions(request) {
 
     let cookies = new Cookies(request.getHeader("Cookie") || "");
     [sessionId, tntId] = getSessionAndTntFromCookie(cookies, request);
-    request.setVariable(sessionIdVariable, sessionId);
-    request.setVariable(tntIdVariable, tntId);
 
     if (!!mboxes_param) {
       mboxesToDecide = getMboxesFromString(mboxes_param);
