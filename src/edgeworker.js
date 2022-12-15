@@ -1,10 +1,10 @@
-
 import { Cookies, SetCookie } from "cookies";
 import { logger } from "log";
 
 import {
   deliveryApiCall
 } from "./target";
+import mboxesList from './mboxes'
 
 const mboxCookieName = "mbox"; // Name of cookie that stores user identifier (visitorId) assignment
 const mboxEdgeClusterCookieName = "mboxEdgeCluster";
@@ -13,7 +13,7 @@ const sessionMaxAge = 1860; // 30 minutes
 const sessionIdVariable = "PMUSER_TARGET_SESSION_ID";
 const tntIdVariable = "PMUSER_TARGET_TNT_ID";
 const mboxesListVariable = "PMUSER_TARGET_MBOXES_LIST";
-const key_value_delimiter = ",";
+const tntaListVariable = "PMUSER_TNTA_LIST";
 
 // CDN Agent functionality
 const MBOXES_PARAM = "mboxes";
@@ -32,33 +32,19 @@ async function getDecisionsForRequest(
   // Save sessionId and tntId returned from target
   request.setVariable(sessionIdVariable, sessionId);
   request.setVariable(tntIdVariable, targetResponse.id.tntId);
-  // TODO: Create into an array of objects with featureKey, variationKey and experimentKey
-  return [[], []];
-}
 
-/**
- * Trims all empty spaces from strings in the string array in case of human error.
- * When splitting a comma delimited string any spaces around the flagKeys will cause issues when retrieving decisions
- *
- * @param {*} arr
- * @returns
- */
-function trimArray(arr) {
-  let i;
-  for (i = 0; i < arr.length; i++) {
-    arr[i] = arr[i].replace(/^\s\s*/, "").replace(/\s\s*$/, "");
+  const decisions = [];
+  for (let i = 0; i < targetResponse.execute.mboxes.length; i++) {
+    const mbox = targetResponse.execute.mboxes[i];
+    if (mbox.options && mbox.options.length > 0) {
+      decisions.push({
+        mbox: mbox.name,
+        content: mbox.options[0].content,
+        tnta: mbox.metrics[0].analytics.payload.tnta
+      })
+    }
   }
-  return arr;
-}
-
-// Returns an array list of mboxes requiring a decision
-function getMboxesFromString(value) {
-  if (!value) return [];
-
-  let result = value.split(key_value_delimiter);
-  result = trimArray(result);
-
-  return result;
+  return decisions;
 }
 
 // Generate a unique id for session and tnt ids
@@ -110,36 +96,29 @@ function getSessionAndTntFromCookie(cookies, request) {
 
 async function getRequestTargetDecisions(request) {
   let allDecisions = []; // concatenated array that will contain all decisions
-  let mboxesToDecide; // contains a list of all mboxes that require a decision
-  let reasons; // An array of relevant error and log messages, in chronological order
 
   let sessionId;
   let tntId;
 
   try {
-    //   Create query parames object
-    let params = new URLSearchParams(request.query);
-
-    // get all mboxes to query
-    const mboxes_param = params.get(MBOXES_PARAM);
-    // TODO: if no params found
-
     let cookies = new Cookies(request.getHeader("Cookie") || "");
     [sessionId, tntId] = getSessionAndTntFromCookie(cookies, request);
 
-    if (!!mboxes_param) {
-      mboxesToDecide = getMboxesFromString(mboxes_param);
-      request.setVariable(mboxesListVariable, (mboxesToDecide || "").join());
+    const mboxes = mboxesList[request.path]
 
-      [allDecisions, reasons] = await getDecisionsForRequest(
+    if (!mboxes.length) {
+      const mboxes = mboxesList[request.path]
+      request.setVariable(mboxesListVariable, (mboxes || "").join());
+
+      allDecisions = await getDecisionsForRequest(
         request,
         sessionId,
         tntId,
-        mboxesToDecide
+        mboxes
       );
     }
 
-    return [allDecisions, reasons];
+    return allDecisions;
   } catch (err) {
     logger.log(
       "Failed to complete processing operations within onClientRequest: %s",
@@ -151,10 +130,12 @@ async function getRequestTargetDecisions(request) {
 async function onClientRequest(request) {
   // Get decisions for the current visitor and set the origin headers with all valid decisions
   // The decisions object will contain an array of objects with featureKey, variationKey and experimentKey
-  let [decisions, reasons] = await getRequestTargetDecisions(request);
+  let decisions = await getRequestTargetDecisions(request);
   // Do something with the decisions here...
   /******************** Your code starts here *******************/
-
+  // TODO: confirm with akamai if we can use headers for caching or if it has to be query params:
+  // https://techdocs.akamai.com/download-delivery/docs/cache-key-query-parameters-and-dd
+  request.setHeader('personalization-decisions', JSON.stringify(decisions));
   /******************** Your code ends here ********************/
 }
 
